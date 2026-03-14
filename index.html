@@ -274,69 +274,47 @@ function App() {
   // ── Google Sign-In ─────────────────────────────────────────────────────────
   useEffect(()=>{
     const interval = setInterval(()=>{
-      if(window.google && window.google.accounts && window.google.accounts.id){
+      if(window.google && window.google.accounts && window.google.accounts.oauth2){
         clearInterval(interval);
-        window.google.accounts.id.initialize({
-          client_id: CLIENT_ID,
-          callback: handleCredential,
-          auto_select: true,
-        });
-        // Try silent sign-in first
-        window.google.accounts.id.prompt();
       }
     }, 300);
     return ()=>clearInterval(interval);
   },[]);
 
-  const handleCredential = (res) => {
-    try {
-      const payload = JSON.parse(atob(res.credential.split('.')[1]));
-      const client = window.google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: (tokenRes) => {
-          if(tokenRes.error) return;
-          gToken = tokenRes.access_token;
-          const u = { name: payload.name, email: payload.email, picture: payload.picture };
-          save("st2_user", u);
-          setUser(u);
-          showToast("✦ 已登入 " + payload.name);
-          loadFromDrive(tokenRes.access_token);
-        },
-      });
-      client.requestAccessToken({ prompt: "" });
-    } catch(e) { console.error(e); }
-  };
-
   const signIn = () => {
-    if(!window.google){ showToast("Google 尚未載入，請稍後再試","#f87171"); return; }
+    if(!window.google || !window.google.accounts){
+      showToast("Google 尚未載入，請稍後再試","#f87171");
+      return;
+    }
     const client = window.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
-      scope: SCOPES,
-      ux_mode: "popup",
+      scope: SCOPES + " https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email",
       callback: (tokenRes) => {
-        if(tokenRes.error){ showToast("登入失敗","#f87171"); return; }
+        if(tokenRes.error){
+          showToast("登入失敗: " + tokenRes.error, "#f87171");
+          return;
+        }
         gToken = tokenRes.access_token;
         fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
           headers: { Authorization: "Bearer " + gToken }
         })
-        .then(r => r.json())
-        .then(info => {
+        .then(function(r){ return r.json(); })
+        .then(function(info){
           const u = { name: info.name, email: info.email, picture: info.picture };
           save("st2_user", u);
           setUser(u);
           showToast("✦ 已登入 " + info.name);
           loadFromDrive(gToken);
         })
-        .catch(() => showToast("取得用戶資料失敗","#f87171"));
+        .catch(function(){ showToast("取得用戶資料失敗","#f87171"); });
       },
     });
-    client.requestAccessToken({ prompt: "select_account" });
+    client.requestAccessToken();
   };
 
   const signOut = () => {
     if(gToken && window.google && window.google.accounts && window.google.accounts.oauth2){
-      window.google.accounts.oauth2.revoke(gToken, ()=>{});
+      window.google.accounts.oauth2.revoke(gToken, function(){});
     }
     gToken = null;
     save("st2_user", null);
@@ -370,4 +348,28 @@ function App() {
           records: load("st2_records",[]),
           subjects: load("st2_subjects",[]),
           chapters: load("st2_chapters",[]),
-          goals: load("st2_goals",{
+          goals: load("st2_goals",{daily:120,weekly:840}),
+          exam: load("st2_exam",{date:"",name:""}),
+        };
+        uploadData(localData, null, token).then(id => {
+          setDriveFileId(id);
+          setSyncStatus("ok");
+          showToast("✦ 本機資料已備份至雲端");
+        }).catch(() => {
+          setSyncStatus("error");
+        }).finally(() => setSyncing(false));
+      }
+    }).catch(() => {
+      setSyncStatus("error");
+      setSyncing(false);
+      showToast("同步失敗，保留本機資料","#f87171");
+    });
+  };
+
+  const syncToDrive = () => {
+    if(!gToken || !user) return;
+    setSyncing(true);
+    const data = { records, subjects, chapters, goals, exam, updatedAt: new Date().toISOString() };
+    const doUpload = (fid) => {
+      uploadData(data, fid, gToken).then(newId => {
+      
