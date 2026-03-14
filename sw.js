@@ -1,4 +1,4 @@
-const CACHE = "studylog-v17";
+const CACHE = "studylog-v19";
 const ASSETS = [
   "/Study-log/",
   "/Study-log/index.html",
