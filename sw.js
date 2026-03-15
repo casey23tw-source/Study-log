@@ -1,4 +1,4 @@
-var CACHE = "studylog-v51";
+var CACHE = "studylog-v60";
 var ASSETS = [
   "/Study-log/",
   "/Study-log/index.html",
@@ -39,10 +39,6 @@ self.addEventListener("fetch", function(e){
 });
 
 // 只有收到 skipWaiting 訊息才更新
-self.addEventListener("message", function(e){
-  if(e.data === "skipWaiting") self.skipWaiting();
-});
-
 self.addEventListener("message", function(e){
   if(e.data === "skipWaiting") self.skipWaiting();
 });
